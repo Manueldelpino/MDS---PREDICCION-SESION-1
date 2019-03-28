@@ -1,0 +1,498 @@
+---
+title: "TAREA FINAL COLGATE Y CREST"
+author: "Manuel del Pino Guerrero"
+date: "14 de enero de 2019"
+output: html_document
+---
+El análisis de intervención proporciona una herramienta que puede ser útil para evaluar el impacto de las iniciativas que la empresa y los competidores o terceros pueden realizar en el mix de mercado. En esta caso práctico, consideramos la lucha por la cuota de mercado entre la crema dental Colgate de Colgate-Palmolive y la crema dental Crest de Procter y Gamble.
+
+Procter y Gamble introdujeron Crest en el mercado estadounidense en 1956. Antes de ese momento, Colgate disfrutaba de un liderazgo de mercado con una participación de mercado cercana al 50%. Durante los siguientes 4 años, Colgate siguió siendo un competidor dominante y Crest solo logró una participación de mercado relativamente modesta pero estable del 15%. Sin embargo, el 1 de agosto de 1960, el Consejo de Terapéutica Dental de la American Dental Association (ADA) aprobó a Crest como una "ayuda importante en cualquier programa de higiene dental".
+
+Mientras tanto, Procter & Gamble revitalizaron su campaña de marketing para aprovechar el respaldo de la ADA, lo que dio como resultado un salto casi inmediato en la participación de mercado de Crest en detrimento de la de Colgate.
+
+En el fichero data.xlsx se encuentran las cuotas del mercado de Colgate y Crest semanales desde 1958 hasta abril de 1963.
+
+Vamos a cargar las librerías necesarias así como el dataset que nos han proporcionado para comenzar nuestra práctica de predicción.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(magrittr)
+library(ggfortify)
+library(forecast)
+library(TSA)
+library(openxlsx)
+library(reader)
+library(tibble)
+library(lubridate)
+library(xts)
+library(dygraphs)
+
+data <- read.xlsx("C:/Users/Knowhow/Desktop/CUNEF/PREDICCION-FORECASTING/TAREA FINAL COLGATE & CREST/data.xlsx")
+MarketShare <- data[c(-261:-276),]
+
+generateDate <- seq(as.Date('1958/01/08'), as.Date('1962/12/31'), by = 'week')
+
+
+```
+
+Una vez cargado nuestro dataset, observamos que los datos vienen ordenados por fecha en formato Year y Week, es decir, por años y semanas.
+Como nuestra fecha de intervención viene definida de la forma: "1960-07-30", debemos modificarla con la variable creada "generateDate" para que así sea reconocido por nuestras funciones y podamos trabajar trás "parsear los datos" de aquí en adelante.
+
+```{r}
+
+#Datos semanalaes para Colgate y Crest en el periodo: 1958-1962
+
+#Definimos la fecha de intervención de ADA
+
+
+interventionDate<-as.Date.character("1960/07/30")
+
+ 
+
+
+```
+
+A continuación, vamos a dibujar las cuotas de mercado para COLGATE y CREST pero para ello, debemos obtener primero una mejor idea de los datos y vamos a construir por tanto 2 series temporales para COLGATE y CREST respectivamente.
+
+```{r}
+colgate <- ts(MarketShare$Colgate, start = 1958, frequency = 52)
+crest <- ts(MarketShare$Crest, start = 1958, frequency = 52)
+```
+
+Ahora si, dibujamos.
+
+```{r}
+plotColgate <- MarketShare %>%
+  ggplot( aes(x = (generateDate), y = Colgate))+
+  geom_line() +
+  labs(y = "Colgate", title="Cuota de Mercado 1958-1962")+
+  geom_vline(aes(xintercept=as.Date(interventionDate), col ="red"), show.legend = F)+
+  theme_minimal()
+
+plot(plotColgate)
+```
+
+Realizamos la misma operación para Crest
+
+```{r}
+plotCrest<-MarketShare%>%
+  ggplot( aes(x=generateDate,y=Crest))+
+  geom_line()+
+  labs(y="Crest", title="Cuota de Mercado 1958-1962")+
+  geom_vline(aes(xintercept=as.Date(interventionDate), col="red"), show.legend = F)+
+  theme_minimal()
+
+plot(plotCrest)
+```
+
+Tal y como se muestra en ambos gráficos, hay una clara caída (Colgate) e incremento (Crest) en las Cuotas de Mercado para Colgate y Crest después de 1960, respectivamente.
+
+Entonces, vamos a necesitar dividir los datos en una pre-intervención y post-intervención ejemplos.
+
+El ejemplo de pre-intervención de la ADA finaliza en "30-07-1960"" 
+
+El de post-intervención comienza por tanto después de "30-07-1960".
+
+(b) Vamos a usar auto.arima para estimar 2 modelos de ARIMA para el periodo pre-intervención.
+
+```{r}
+# Ejemplo para el periodo de pre-intervención lo llamaremos train
+
+train <- MarketShare%>%
+  filter(generateDate<interventionDate)
+View(train)
+
+# Ejemplo para el periodo de post-intervención lo llamaremos test
+
+test <- MarketShare%>%
+  filter(generateDate>=interventionDate) 
+View(test)
+```
+
+A continuación, vamos a identificar el modelo para el proceso sobre el periodo de pre-intervención de la ADA en primer lugar para COLGATE donde podremos observar la evolución de sus cuotas de mercado hasta la fecha 30 de Julio de 1960 semana a semana tal y como viene marcado en nuestro dataset la cual será la semana número 134 (2 años y 7 meses).
+
+```{r}
+Colgate.pre.intervention <- ts(train$Colgate)
+LColgate.pre.intervention <- log(Colgate.pre.intervention)
+dLColgate.pre.intervention1 <-diff(LColgate.pre.intervention)
+dLColgate.pre.intervention12 <- diff(LColgate.pre.intervention, lag=12)
+d2LColgate.pre.intervention_12 <- diff(diff(LColgate.pre.intervention), lag=12)
+
+par(mfrow=c(2,3))
+plot(Colgate.pre.intervention, xlab = "", ylab = "", main = 'Colgate.pre.intervention')
+plot(LColgate.pre.intervention, xlab = "", ylab = "", main = 'log(Colgate.pre.intervention)')
+plot(dLColgate.pre.intervention1, xlab = "", ylab = "", main = expression(paste(Delta, "log(Colgate.pre.intervention)")))
+plot(dLColgate.pre.intervention12, xlab = "", ylab = "", main = expression(paste(Delta[12], "log(Colgate.pre.intervention)")))
+plot(d2LColgate.pre.intervention_12, xlab = "", ylab = "", main = expression(paste(Delta,Delta[12], "log(Colgate.pre.intervention)")))
+
+dygraph(dLColgate.pre.intervention1)
+```
+
+Entre las herramientas más destacadas para identificar nuestro modelo encontramos:
+
+*** Gráfico de la serie: a la vista de la evolución temporal de la variable de interés se detecta por un lado la necesidad de estabilizar la varianza y por otro, la necesidad de estabilizar la media si esta no es constante (proceso no estacionario en media).
+
+En nuestra práctica vamos a llevar a cabo dos análisis para identificar nuestro modelo y que van a ser por lo tanto:
+
+1) Función de autocorrelación simple (FAS, en inglés ACF)
+2) Función de autocorrelación parcial (FAP, en inglés PACF)
+
+```{r}
+# Auto-correlación : ACF and PACF para Colgate
+
+maxlag <- 60  # Lo marcamos en 60 porque son el número de meses que contienen 5 años
+
+par(mfrow=c(2,4))
+
+Acf(LColgate.pre.intervention, lag.max=maxlag, main = expression(paste("ACF for log(Colgate.pre.intervention)")))
+Acf(dLColgate.pre.intervention1, lag.max=maxlag, main = expression(paste("ACF for ",Delta, "log(Colgate.pre.intervention)")))
+Acf(dLColgate.pre.intervention12, lag.max=maxlag, main = expression(paste("ACF for ",Delta[12], "log(Colgate.pre.intervention)")))
+Acf(d2LColgate.pre.intervention_12, lag.max=maxlag, main = expression(paste("ACF for ",Delta,Delta[12], "log(Colgate.pre.intervention)")))
+
+Pacf(LColgate.pre.intervention, lag.max = maxlag, main = expression(paste("PACF for log(Colgate.pre.intervention)")))
+Pacf(dLColgate.pre.intervention1, lag.max = maxlag, main = expression(paste("PACF for ",Delta, "log(Colgate.pre.intervention)")))
+Pacf(dLColgate.pre.intervention12, lag.max = maxlag, main = expression(paste("PACF for ",Delta[12], "log(Colgate.pre.intervention)")))
+Pacf(d2LColgate.pre.intervention_12, lag.max = maxlag, main = expression(paste("PACF for ",Delta,Delta[12], "log(Colgate.pre.intervention)")))
+```
+
+
+Usamos tal y como se requiere en la práctica, los modelos ARIMA para el periodo de pre-intervención eligiendo auto.arima para COLGATE
+
+```{r}
+armaColgate <- auto.arima(LColgate.pre.intervention)
+armaColgate
+
+summary(armaColgate)
+```
+
+Adecuamos y reflejamos de mejor maner dicho modelo ARIMA
+
+```{r}
+tsdiag(armaColgate, gof.lag = maxlag)
+```
+Tal y como hemos hecho para Colgate, debemos hacerlo ahora con las cuotas de mercado de Crest y su análisis previo a la fecha de interveción. (Pre-intervención)
+
+```{r}
+Crest.pre.intervention <- ts(train$Crest)
+LCrest.pre.intervention <- log(Crest.pre.intervention)
+dLCrest.pre.intervention1 <-diff(LCrest.pre.intervention)
+dLCrest.pre.intervention12 <- diff(LCrest.pre.intervention, lag=12)
+d2LCrest.pre.intervention_12 <- diff(diff(LCrest.pre.intervention), lag=12)
+
+par(mfrow=c(2,3))
+plot(Crest.pre.intervention, xlab = "", ylab = "", main = 'Crest.pre.intervention')
+plot(LCrest.pre.intervention, xlab = "", ylab = "", main = 'log(Crest.pre.intervention)')
+plot(dLCrest.pre.intervention1, xlab = "", ylab = "", main = expression(paste(Delta, "log(Crest.pre.intervention)")))
+plot(dLCrest.pre.intervention12, xlab = "", ylab = "", main = expression(paste(Delta[12], "log(Crest.pre.intervention)")))
+plot(d2LCrest.pre.intervention_12, xlab = "", ylab = "", main = expression(paste(Delta,Delta[12], "log(Crest.pre.intervention)")))
+
+dygraph(dLCrest.pre.intervention1)
+
+```
+
+Tal y como hemos llevado a cabo anteriormente para Colgate, procedemos a identificar el modelo con:
+
+1) Función de autocorrelación simple (FAS, en inglés ACF)
+2) Función de autocorrelación parcial (FAP, en inglés PACF)
+
+```{r}
+#Auto-correlación : ACF and PACF para Crest
+
+maxlag <- 60 
+
+par(mfrow=c(2,4))
+
+Acf(LCrest.pre.intervention, lag.max=maxlag, main = expression(paste("ACF for log(Crest.pre.intervention)")))
+Acf(dLCrest.pre.intervention1, lag.max=maxlag, main = expression(paste("ACF for ",Delta, "log(Crest.pre.intervention)")))
+Acf(dLCrest.pre.intervention12, lag.max=maxlag, main = expression(paste("ACF for ",Delta[12], "log(Crest.pre.intervention)")))
+Acf(d2LCrest.pre.intervention_12, lag.max=maxlag, main = expression(paste("ACF for ",Delta,Delta[12], "log(Crest.pre.intervention)")))
+
+Pacf(LCrest.pre.intervention, lag.max = maxlag, main = expression(paste("PACF for log(Crest.pre.intervention)")))
+Pacf(dLCrest.pre.intervention1, lag.max = maxlag, main = expression(paste("PACF for ",Delta, "log(Crest.pre.intervention)")))
+Pacf(dLCrest.pre.intervention12, lag.max = maxlag, main = expression(paste("PACF for ",Delta[12], "log(Crest.pre.intervention)")))
+Pacf(d2LCrest.pre.intervention_12, lag.max = maxlag, main = expression(paste("PACF for ",Delta,Delta[12], "log(Crest.pre.intervention)")))
+```
+
+
+ARIMA MODEL para CREST para el periodo de Pre-Intervención.
+
+```{r}
+armaCrest <- auto.arima(LCrest.pre.intervention)
+armaCrest
+
+summary(armaCrest)
+
+```
+De igual manera, vamos a adecuar el modelo arma tal y como hicimos con Colgate.
+
+```{r}
+tsdiag(armaCrest, gof.lag = maxlag)
+```
+
+2.0 DETECCIÓN DE OUTLIERS:
+
+  La presencia de observaciones atípicas (outliers) causa importantes problemas en la modelización univariante de las series temporales. De hecho, la propia identificación del proceso generador de datos encuentra graves dificultades, como consecuencia de las alteraciones que las observaciones atípicas producen en los instrumentos habitualmente utilizados a tal fin (correlograma muestral y representación gráfica de la función de autocorrelación parcial muestral). Además, los outliers afectan a la estimación de los parámetros del modelo; y, en consecuencia, alteran los tamaños de los intervalos de predicción, que están directamente relacionados con el parámetro a estimar (varianza del ruido blanco).
+  
+Desde luego, por lo comentado, parece obvio que los outliers, o mejor la ignorancia de los mismos, van a afectar las predicciones puntuales que se obtengan a partir de los modelos estocásticos univariantes de series temporales especificados. Sin embargo, esta afectación va a depender de distintas cuestiones, tales como el tipo de outliers no detectadas, el efecto cuantitativo de ios mismos, el período de acurrencia (más o menos próximo al horizonte ternporal desde e! que comenzamos a calcular las predicciones) y el proceso estocástico generador de los datos.
+
+
+Para predecir las 16 semanas del año 1963 para las dos cuotas de mercado, primero vamos a llevar a cabo una detección de OUTLIERS.
+
+En series temporales los valores atípicos o outliers son:
+
+1)Aditivos (AO): afecta a la serie temporal
+2)Innovativos (IO): afecta al error
+
+```{r}
+Ou.Colgate = arima(colgate,order=c(0,1,1),seasonal=list(order=c(0,1,1),period=60))
+Ou.Colgate
+```
+
+Vamos a detectar los outliers por tanto ADITIVOS (AO) que afectan a la serie temporal.
+
+```{r}
+detectAO(Ou.Colgate)
+```
+
+Hacemos lo mismo para los outliers Innovativos, es decir, aquellos que afectan al error.
+
+```{r}
+detectIO(Ou.Colgate)
+```
+Ahora, llevamos a cabo el mismo proceso para CREST en la detección de OUTLIERS.
+
+```{r}
+Ou.Crest = arima(crest,order=c(0,1,1),seasonal=list(order=c(0,1,1),period=60))
+Ou.Crest
+```
+
+
+Vamos a detectar los outliers por tanto ADITIVOS (AO) que afectan a la serie temporal.
+```{r}
+detectAO(Ou.Crest)
+```
+
+Hacemos lo mismo para los outliers Innovativos, es decir, aquellos que afectan al error.
+```{r}
+detectIO(Ou.Crest)
+```
+
+
+3.0 FORECAST CON ARIMA 
+
+Trás incluir las dos series requeridas en los modelos ARIMA, vamos a pasar a obtener un modelo de intervención por lo que identificaremos y estimaremos 2 funciones de modelo de transferencia para el conjunto completo del dataset.
+
+En primer lugar haremos predicciones teniendo en cuenta la fecha de pre-intervención de la ADA, y en segundo lugar lo haremos con la de POST-intervención, la cual será más relevante en nuestro informe ya que nos va a permitir predecir las 16 semanas objetivo del año 1963 tal y como se requiere en nuestro estudio.
+
+```{r}
+# forecast basado en el modelo del periodo pre-intervención para COLGATE.
+
+armaColgate.f <- forecast(armaColgate, 64)
+armaColgate.f.err <- ts(log(data$Colgate)) - armaColgate.f$mean
+
+plot(armaColgate.f) # Forecast from ARIMA
+```
+
+```{r}
+plot(armaColgate.f.err) #Aquí se puede observar el error del forecast ajustado
+
+par(mfrow=c(2,1))
+Acf(armaColgate.f.err, type="correlation", lag.max=60, ylab="ACF", main="armaColgate.f.err")
+Acf(armaColgate.f.err, type="partial", lag.max=60, ylab="PACF", main="armaColgate.f.err")
+```
+Realizamos la misma operación para el modelo de pre-intervención de Crest.
+
+```{r}
+armaCrest.f <- forecast(armaCrest , 64)
+armaCrest.f.err <- ts(log(data$Crest)) - armaCrest.f$mean
+
+plot(armaCrest.f) 
+plot(armaCrest.f.err) 
+```
+```{r}
+par(mfrow=c(2,1))
+Acf(armaCrest.f.err, type="correlation", lag.max=60, ylab="ACF", main="armaCrest.f.err")
+Acf(armaCrest.f.err, type="partial", lag.max=60, ylab="PACF", main="armaCrest.f.err")
+```
+Ahora vamos a llevar a cabo los dos análisis anteriores para identificar los modelos:
+
+## 1) Función de autocorrelación simple (FAS, en inglés ACF)
+##   1a) FAS para Colgate
+##   1b) FAS para Crest
+## 2) Función de autocorrelación parcial (FAP, en inglés PACF)
+##   2a) FAP para Colgate
+##   2b) FAP para Crest
+
+Por cuestión de comodidad, vamos a realizar tanto FAS como FAP primero para Colgate y posteriormente para Crest.
+
+En este momento hemos realizado los modelos ARIMA para Colgate y Crest en el periodo de pre-intervención. Del mismo modo, hemos hecho las funciones de autocorrelación simple y compuesta para ambos modelos. 
+
+Ahora es el momento de realizar la misma tarea pero para el periodo post-intervención, es decir, a partir de la semana 134.
+
+## Colgate
+
+```{r}
+ColgatePostIntervencion <- ts(test$Colgate)
+LColgatePostIntervencion <- log(ColgatePostIntervencion)
+dLColgatePostIntervencion <- diff(LColgatePostIntervencion)
+dLColgatePostIntervencion2 <- diff(LColgatePostIntervencion, lag=12)
+dLColgatePostIntervencion3 <- diff(diff(LColgatePostIntervencion), lag=12)
+
+par(mfrow=c(2,3))
+
+plot(ColgatePostIntervencion, xlab = "", ylab = "", main = 'ColgatePostIntervencion')
+plot(LColgatePostIntervencion, xlab = "", ylab = "", main = 'log(ColgatePostIntervencion)')
+plot(dLColgatePostIntervencion, xlab = "", ylab = "", main = expression(paste(Delta, "log(ColgatePostIntervencion)")))
+plot(dLColgatePostIntervencion2, xlab = "", ylab = "", main = expression(paste(Delta[12], "log(ColgatePostIntervencion)")))
+plot(dLColgatePostIntervencion3, xlab = "", ylab = "", main = expression(paste(Delta,Delta[12], "log(ColgatePostIntervencion)")))
+
+dygraph(dLColgatePostIntervencion)
+```
+
+## Crest
+
+```{r}
+CrestPostIntervencion <- ts(test$Crest)
+LCrestPostIntervencion <- log(CrestPostIntervencion)
+dLCrestPostIntervencion <- diff(LCrestPostIntervencion)
+dLCrestPostIntervencion2 <- diff(LCrestPostIntervencion, lag=12)
+dLCrestPostIntervencion3 <- diff(diff(LCrestPostIntervencion), lag=12)
+
+par(mfrow=c(2,3))
+
+plot(CrestPostIntervencion, xlab = "", ylab = "", main = 'CrestPostIntervencion')
+plot(LCrestPostIntervencion, xlab = "", ylab = "", main = 'log(CrestPostIntervencion)')
+plot(dLCrestPostIntervencion, xlab = "", ylab = "", main = expression(paste(Delta, "log(CrestPostIntervencion)")))
+plot(dLCrestPostIntervencion2, xlab = "", ylab = "", main = expression(paste(Delta[12], "log(CrestPostIntervencion)")))
+plot(dLCrestPostIntervencion3, xlab = "", ylab = "", main = expression(paste(Delta,Delta[12], "log(CrestPostIntervencion)")))
+
+dygraph(dLCrestPostIntervencion)
+
+```
+
+Autocrrelaciones para Colgate Post Intervención
+
+```{r}
+maxlag <- 60
+
+par(mfrow=c(2,4))
+
+Acf(LColgatePostIntervencion, lag.max = maxlag, main = expression(paste("FAS para log(ColgatePostIntervencion)")))
+Acf(dLColgatePostIntervencion, lag.max = maxlag, main = expression(paste("FAS para ", Delta, "log(ColgatePostIntervencion)")))
+Acf(dLColgatePostIntervencion2, lag.max = maxlag, main = expression(paste("FAS para ", Delta[12], "log(ColgatePostIntervencion)")))
+Acf(dLColgatePostIntervencion3, lag.max = maxlag, main = expression(paste("FAS para ", Delta, Delta[12], "log(ColgatePostIntervencion)")))
+
+Pacf(LColgatePostIntervencion, lag.max = maxlag, main = expression(paste("FAP for log(ColgatePostIntervencion)")))
+Pacf(dLColgatePostIntervencion, lag.max = maxlag, main = expression(paste("FAP para ", Delta, "log(ColgatePostIntervencion)")))
+Pacf(dLColgatePostIntervencion2, lag.max = maxlag, main = expression(paste("FAP para ", Delta[12], "log(ColgatePostIntervencion)")))
+Pacf(dLColgatePostIntervencion3, lag.max = maxlag, main = expression(paste("FAP para ", Delta,Delta[12], "log(ColgatePostIntervencion)")))
+
+```
+## Modelo ARIMA para Colgate en el periodo post intervención.
+
+```{r}
+arimaColgatePost <- auto.arima(LColgatePostIntervencion)
+arimaColgatePost
+
+summary(arimaColgatePost)
+tsdiag(arimaColgatePost, gof.lag = maxlag)
+```
+
+
+Autocorrelaciones para Crest Post Intervención.
+
+
+```{r}
+maxlag <- 60 
+
+par(mfrow=c(2,4))
+
+Acf(LCrestPostIntervencion, lag.max = maxlag, main = expression(paste("FAS para log(CrestPostIntervencion)")))
+Acf(dLCrestPostIntervencion, lag.max = maxlag, main = expression(paste("FAS para ", Delta, "log(CrestPostIntervencion)")))
+Acf(dLCrestPostIntervencion2, lag.max = maxlag, main = expression(paste("FAS para ", Delta[12], "log(CrestPreIntervencion)")))
+Acf(dLCrestPostIntervencion3, lag.max = maxlag, main = expression(paste("FAS para ", Delta, Delta[12], "log(CrestPostIntervencion)")))
+
+Pacf(LCrestPostIntervencion, lag.max = maxlag, main = expression(paste("FAP para log(CrestPostIntervencion)")))
+Pacf(dLCrestPostIntervencion, lag.max = maxlag, main = expression(paste("FAP para ", Delta, "log(CrestPostIntervencion)")))
+Pacf(dLCrestPostIntervencion2, lag.max = maxlag, main = expression(paste("FAP para ", Delta[12], "log(CrestPostIntervencion)")))
+Pacf(dLCrestPostIntervencion3, lag.max = maxlag, main = expression(paste("FAP para ", Delta, Delta[12], "log(CrestPostIntervencion)")))
+
+```
+
+
+Una vez vueltas a identificar las funciones de autocorrelación simple y compuesta, vamos a realizar los modelos ARIMA tanto para Colgate como para Crest en los periodos post intervención con los OUTLIERS ya detectados.
+
+## Modelo ARIMA para Colgate en el periodo post intervención.
+
+```{r}
+arimaColgatePost <- auto.arima(LColgatePostIntervencion)
+arimaColgatePost
+
+summary(arimaColgatePost)
+tsdiag(arimaColgatePost, gof.lag = maxlag)
+```
+## Modelo ARIMA para Crest en el periodo post intervención.
+
+```{r}
+arimaCrestPost <- auto.arima(LCrestPostIntervencion)
+arimaCrestPost
+
+summary(arimaCrestPost)
+tsdiag(arimaCrestPost, gof.lag = maxlag)
+```
+
+
+Tras incluir las dos series requeridas en los modelos ARIMA, vamos a pasar a obtener un modelo de intervención por lo que identificaremos y estimaremos 2 funciones de modelo de transferencia para el conjunto completo del dataset.
+
+Predicción en base al modelo ARIMA del dentífrico Colgate post intervention Date
+
+```{r}
+arimaColgate.f <- forecast(arimaColgatePost, 64)
+arimaColgate.f.err <- ts(log(MarketShare$Colgate)) - arimaColgate.f$mean
+
+plot(arimaColgate.f)
+```
+
+
+Predicción en base al modelo ARIMA del dentífrico Crest post intervention Date
+
+```{r}
+arimaCrest.f <- forecast(arimaCrestPost, 64)
+arimaCrest.f.err <- ts(log(MarketShare$Crest)) - arimaCrest.f$mean
+
+plot(arimaCrest.f) 
+```
+# Error del forecast ajustado para Colgate
+
+```{r}
+plot(arimaColgate.f.err)
+
+par(mfrow=c(2,1))
+
+Acf(arimaColgate.f.err, type="correlation", lag.max=60, ylab="ACF", main="arimaColgate.f.err")
+Acf(arimaColgate.f.err, type="partial", lag.max=60, ylab="PACF", main="arimaColgate.f.err")
+```
+
+# Error del forecast ajustado para Crest
+
+```{r}
+plot(arimaCrest.f.err)
+
+par(mfrow=c(2,1))
+
+Acf(arimaCrest.f.err, type="correlation", lag.max=60, ylab="ACF", main="arimaCrest.f.err")
+Acf(arimaCrest.f.err, type="partial", lag.max=60, ylab="PACF", main="arimaCrest.f.err")
+```
+
+
+
+
+R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+
